@@ -130,14 +130,14 @@ int countPngFiles(const char* dirName, int& pngCount) {
     return pngCount;
 }
 
-// Function to create an empty dictionary
+// Function to create an empty dictionary whilst reserving memory for it
 std::unordered_map<std::string, std::string> createEmptyDictionary(int& pngCount) {
     std::unordered_map<std::string, std::string> dictionary;
     dictionary.reserve(pngCount);
     return dictionary;
 }
 
-// Function that split the words to search
+// Function that split the words to search which is then used to filter images
 std::vector<std::string> splitWordsToSearch(const std::string& wordsToSearch) {
     std::vector<std::string> splitWords;
     std::istringstream iss(wordsToSearch);
@@ -151,7 +151,7 @@ std::vector<std::string> splitWordsToSearch(const std::string& wordsToSearch) {
         if(start != std::string::npos && end != std::string::npos) {
             splitWords.push_back(word.substr(start, end - start + 1));
         } else {
-            // If the word is only spaces or empty, we might want to handle it
+            // If the word is only spaces or empty, it is discarded
             splitWords.push_back("");
         }
     }
@@ -159,7 +159,7 @@ std::vector<std::string> splitWordsToSearch(const std::string& wordsToSearch) {
     return splitWords;
 }
 
-// Helper function to read metadata from PNG chunks, focusing only on tEXt chunks with buffered reading
+// Helper function to read metadata from PNG chunks, focusing only on tEXt chunks with buffered reading, feel free to modify this if you need other metadata types
 std::string readPngMetadata(const std::string& fileName) {
     std::ifstream file(fileName, std::ios::binary | std::ios::in);
     if (!file) return ""; // Error opening file
@@ -190,8 +190,7 @@ std::string readPngMetadata(const std::string& fileName) {
                     metadata += keyword + ": " + text + "\n";
                 }
             } else {
-                // If the chunk is larger than our buffer, we might need to handle this differently
-                // But for simplicity, we'll ignore very large chunks for now
+                // If the chunk is larger than our buffer, we might need to handle this differently                
                 file.seekg(length, std::ios::cur);
             }
         } else {
