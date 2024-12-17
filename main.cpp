@@ -133,6 +133,7 @@ int countPngFiles(const char* dirName, int& pngCount) {
 // Function to create an empty dictionary
 std::unordered_map<std::string, std::string> createEmptyDictionary(int& pngCount) {
     std::unordered_map<std::string, std::string> dictionary;
+    dictionary.reserve(pngCount);
     return dictionary;
 }
 
