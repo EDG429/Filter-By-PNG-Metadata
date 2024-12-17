@@ -12,6 +12,68 @@
 #include <thread>
 #include <mutex>
 #include <condition_variable>
+#include <queue>
+#include <future>
+#include <functional>
+
+class ThreadPool {
+private:
+    std::vector<std::thread> workers;
+    std::queue<std::function<void()>> tasks;
+    std::mutex queue_mutex;
+    std::condition_variable condition;
+    bool stop;
+
+public:
+    ThreadPool(size_t threads) : stop(false) {
+        for(size_t i = 0; i < threads; ++i)
+            workers.emplace_back(
+                [this] {
+                    for (;;) {
+                        std::function<void()> task;
+                        {
+                            std::unique_lock<std::mutex> lock(this->queue_mutex);
+                            this->condition.wait(lock, [this]{ return this->stop || !this->tasks.empty(); });
+                            if(this->stop && this->tasks.empty())
+                                return;
+                            task = std::move(this->tasks.front());
+                            this->tasks.pop();
+                        }
+                        task();
+                    }
+                }
+            );
+    }
+
+    ~ThreadPool() {
+        {
+            std::unique_lock<std::mutex> lock(queue_mutex);
+            stop = true;
+        }
+        condition.notify_all();
+        for(std::thread &worker: workers)
+            worker.join();
+    }
+
+    template<class F, class... Args>
+    auto enqueue(F&& f, Args&&... args) 
+        -> std::future<typename std::result_of<F(Args...)>::type>
+    {
+        using return_type = typename std::result_of<F(Args...)>::type;
+
+        auto task = std::make_shared< std::packaged_task<return_type()> >(
+            std::bind(std::forward<F>(f), std::forward<Args>(args)...)
+        );
+        
+        std::future<return_type> res = task->get_future();
+        {
+            std::unique_lock<std::mutex> lock(queue_mutex);
+            tasks.emplace([task](){ (*task)(); });
+        }
+        condition.notify_one();
+        return res;
+    }
+};
 
 std::string readPngMetadata(const std::string& fileName);
 
@@ -96,13 +158,14 @@ std::vector<std::string> splitWordsToSearch(const std::string& wordsToSearch) {
     return splitWords;
 }
 
-// Helper function to read metadata from PNG chunks, focusing only on tEXt chunks
+// Helper function to read metadata from PNG chunks, focusing only on tEXt chunks with buffered reading
 std::string readPngMetadata(const std::string& fileName) {
     std::ifstream file(fileName, std::ios::binary | std::ios::in);
     if (!file) return ""; // Error opening file
 
     std::string metadata;
-    char buffer[8]; // Just need 8 bytes for length and type
+    const size_t BUFFER_SIZE = 65536; // 64KB buffer
+    char buffer[BUFFER_SIZE];
 
     // Skip PNG signature
     file.seekg(8, std::ios::beg);
@@ -116,13 +179,19 @@ std::string readPngMetadata(const std::string& fileName) {
 
         if (chunkType == 0x74455874) { // Check if it's a tEXt chunk
             std::string keyword, text;
-            char chunkData[length];
-            if (file.read(chunkData, length)) {
-                size_t i = 0;
-                while (i < length && chunkData[i] != 0) keyword += chunkData[i++];
-                i++; // Skip null terminator
-                text = std::string(chunkData + i, length - i);
-                metadata += keyword + ": " + text + "\n";
+            // We only need to read 'length' bytes for tEXt data
+            if (length <= BUFFER_SIZE) {
+                if (file.read(buffer, length)) {
+                    size_t i = 0;
+                    while (i < length && buffer[i] != 0) keyword += buffer[i++];
+                    i++; // Skip null terminator
+                    text = std::string(buffer + i, length - i);
+                    metadata += keyword + ": " + text + "\n";
+                }
+            } else {
+                // If the chunk is larger than our buffer, we might need to handle this differently
+                // But for simplicity, we'll ignore very large chunks for now
+                file.seekg(length, std::ios::cur);
             }
         } else {
             // Skip this chunk since it's not tEXt
@@ -134,12 +203,11 @@ std::string readPngMetadata(const std::string& fileName) {
 }
 
 // Fill dictionary with metadata, only processing PNG files
-std::unordered_map<std::string, std::string> fillDictionaryWithImageMetadata(const std::string& folderPath, std::unordered_map<std::string, std::string> myDictionary) {
+std::unordered_map<std::string, std::string> fillDictionaryWithImageMetadata(const std::string& folderPath, std::unordered_map<std::string, std::string> myDictionary, ThreadPool& pool) {
     WIN32_FIND_DATAA findFileData;
     HANDLE hFind;
     std::string searchPath = folderPath + "\\*.png";
-    std::vector<std::thread> threads;
-    const int maxThreads = std::thread::hardware_concurrency(); // Number of threads based on cores
+    std::vector<std::future<void>> futures; // To keep track of futures
 
     hFind = FindFirstFileA(searchPath.c_str(), &findFileData);
     if (hFind == INVALID_HANDLE_VALUE) {
@@ -149,31 +217,17 @@ std::unordered_map<std::string, std::string> fillDictionaryWithImageMetadata(con
 
     do {
         std::string fileName = findFileData.cFileName;
-        // Check if it's a file (not a directory)
         if (!(findFileData.dwFileAttributes & FILE_ATTRIBUTE_DIRECTORY)) {
-            if (threads.size() < maxThreads) {
-                threads.emplace_back(processFile, folderPath, fileName, std::ref(myDictionary));
-            } else {
-                // Wait for at least one thread to finish
-                for (auto& t : threads) {
-                    if (t.joinable()) {
-                        t.join();
-                        break; // Exit the loop after joining one thread
-                    }
-                }
-                threads.emplace_back(processFile, folderPath, fileName, std::ref(myDictionary));
-            }
+            futures.push_back(pool.enqueue([&, fileName]() {
+                processFile(folderPath, fileName, myDictionary);
+            }));
         }
     } while (FindNextFileA(hFind, &findFileData) != 0);
 
-    // Join all remaining threads
-    for (auto& t : threads) {
-        if (t.joinable()) {
-            t.join();
-        }
-    }
-    
     FindClose(hFind);
+
+    // Wait for all tasks to complete
+    for(auto& f : futures) f.wait();
     return myDictionary;
 }
 
@@ -264,11 +318,14 @@ int main() {
     std::cout << "\n You have entered a valid folder path.";
     std::cout << "\n There are " << countPngFiles(folderPath.c_str(), pngCount) << " .png files in that folder.";
 
+    // Create threadpool
+    ThreadPool pool(std::thread::hardware_concurrency());
+
     // Create an empty dictionary
     std::unordered_map<std::string, std::string> myDictionary = createEmptyDictionary(pngCount);
     std::cout << "\nA dictionary has been instantiated and has enough space for " << pngCount << " key/value pairs.";
 
-    myDictionary =  fillDictionaryWithImageMetadata(folderPath, myDictionary);
+    myDictionary =  fillDictionaryWithImageMetadata(folderPath, myDictionary, pool);
     std::cout << "Finished processing all files." << std::endl;
 
     // Search for metadata

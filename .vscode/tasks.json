@@ -16,8 +16,8 @@
                     "PROJECT_NAME=${fileBasenameNoExtension}",
                     "OBJS=*.cpp",
                     "BUILD_MODE=DEBUG",
-                    "LDFLAGS=-L\"D:/GameDev/Raylib Games/ConsolePicFinder\" -lzlib -lws2_32",
-                    "CFLAGS=-I\"D:/GameDev/Raylib Games/ConsolePicFinder\""
+                    "LDFLAGS=-L\"D:/GameDev/Raylib Games/ConsolePicFinder/Filter-By-PNG-Metadata\" -lzlib -lws2_32",
+                    "CFLAGS=-I\"D:/GameDev/Raylib Games/ConsolePicFinder/Filter-By-PNG-Metadata\""
                 ]
             },
             "osx": {
@@ -58,8 +58,8 @@
                     "RAYLIB_PATH=C:/raylib/raylib",
                     "PROJECT_NAME=${fileBasenameNoExtension}",
                     "OBJS=*.cpp",
-                    "LDFLAGS=-L\"D:/GameDev/Raylib Games/ConsolePicFinder\" -lzlib -lws2_32",
-                    "CFLAGS=-I\"D:/GameDev/Raylib Games/ConsolePicFinder\""
+                    "LDFLAGS=-L\"D:/GameDev/Raylib Games/ConsolePicFinder/Filter-By-PNG-Metadata\" -lzlib -lws2_32",
+                    "CFLAGS=-I\"D:/GameDev/Raylib Games/ConsolePicFinder/Filter-By-PNG-Metadata\""
                 ]
             },
             "osx": {

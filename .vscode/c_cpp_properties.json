@@ -4,7 +4,7 @@
       "name": "windows-gcc-x64",
       "includePath": [
         "${workspaceFolder}/**",
-        "D:/GameDev/Raylib Games/ConsolePicFinder/"
+        "D:/GameDev/Raylib Games/ConsolePicFinder/Filter-By-PNG-Metadata"
       ],
       "defines": [
         "_DEBUG",
