@@ -18,14 +18,14 @@
 
 class ThreadPool {
 private:
-    std::vector<std::thread> workers;
-    std::queue<std::function<void()>> tasks;
-    std::mutex queue_mutex;
-    std::condition_variable condition;
+    std::vector<std::thread> workers; // A container to hold all the worker threads. This allows the pool to manage multiple threads
+    std::queue<std::function<void()>> tasks; // can hold any callable with no return value, making it versatile for different task types
+    std::mutex queue_mutex; // A mutex to ensure thread-safe access to the task queue. Only one thread can modify the queue at a time
+    std::condition_variable condition; // Used to manage the state of threads waiting for tasks or termination signals
     bool stop;
 
 public:
-    ThreadPool(size_t threads) : stop(false) {
+    ThreadPool(size_t threads) : stop(false) {  // Initializes the thread pool with a given number of threads, setting stop to false initially.
         for(size_t i = 0; i < threads; ++i)
             workers.emplace_back(
                 [this] {
